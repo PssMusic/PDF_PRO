@@ -1000,6 +1000,15 @@ async function rOV() {
   g.innerHTML = ''; 
   S.oSel.clear();
   
+  // Añadir listeners al grid para permitir drop de archivos PDF
+  g.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); });
+  g.addEventListener('drop', async e => { 
+    e.preventDefault(); 
+    e.stopPropagation();
+    const fs = e.dataTransfer.files; 
+    if (fs.length) await mgF(Array.from(fs)); 
+  });
+  
   for (let i = 1; i <= S.tp; i++) {
     const card = document.createElement('div'); 
     card.className = 'org-card'; 
