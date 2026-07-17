@@ -274,7 +274,7 @@ body { display: flex; flex-direction: column; background-image: radial-gradient(
     <span class="et-section-label">Insertar</span>
     <div class="et-section">
       <button class="btn-3d et-btn" style="border-color:var(--blue);color:var(--blue)" onclick="$('imageFileInput').click()"><i class="ph ph-image"></i> Imagen</button>
-      <button class="btn-3d et-btn" style="border-color:var(--blue);color:var(--blue)" data-tool="signature" onclick="setTool('signature',this)"><i class="ph ph-pen-nib"></i> Firma</button>
+      <button class="btn-3d et-btn" style="border-color:var(--blue);color:var(--blue)" onclick="quickSign()"><i class="ph ph-pen-nib"></i> Firma</button>
       <button class="btn-3d et-btn" style="border-color:var(--blue);color:var(--blue)" onclick="openM('wmModal')"><i class="ph ph-drop"></i> Marca agua</button>
       <button class="btn-3d et-btn" style="border-color:var(--blue);color:var(--blue)" onclick="openM('hfModal')"><i class="ph ph-header"></i> Encabezado</button>
     </div>
@@ -695,8 +695,12 @@ function aEv(ac, pn, wrapper) {
       }
       S.selAi = null; S.selPn = 0; rPC(pn); removeRH(pn); return;
     }
-    if (S.tool === 'text') { stIT(pn, c.x, c.y, wrapper); return; }
-    if (S.tool === 'signature') { opSg(pn, c.x, c.y); return; }
+    if (S.tool === 'text') { 
+      // Forzar foco y prevenir scroll en móvil
+      setTimeout(() => stIT(pn, c.x, c.y, wrapper), 50);
+      return; 
+    }
+    // La firma ya no se activa desde aquí, sino desde el botón quickSign()
     S.drawing = true; S.cdP = pn; svU();
     if (S.tool === 'highlight') {
       S.hlPrev = { type: 'highlight', page: pn, col: S.col, sw: S.sw, op: S.op, x: c.x, y: c.y, w: 0, h: 0 };
@@ -848,13 +852,14 @@ function stIT(pn, x, y, wrapper, initialText = '') {
   const el = document.createElement('div'); 
   el.className = 'inline-text-editor';
   el.contentEditable = true; 
-  el.textContent = initialText;
-  el.style.cssText = `left:${x}px;top:${y}px;font-size:${S.ts.sz}px;font-family:${S.ts.f};color:${S.ts.col};font-weight:${S.ts.b ? 'bold' : 'normal'};font-style:${S.ts.i ? 'italic' : 'normal'};text-decoration:${S.ts.u ? 'underline' : ''} ${S.ts.s ? 'line-through' : ''};max-width:${parseFloat(wrapper.style.width) - x - 50}px;`;
+  el.textContent = initialText || 'Escribe...';
+  el.style.cssText = `left:${Math.max(5, x)}px;top:${Math.max(5, y)}px;font-size:${S.ts.sz}px;font-family:${S.ts.f};color:${S.ts.col};font-weight:${S.ts.b ? 'bold' : 'normal'};font-style:${S.ts.i ? 'italic' : 'normal'};text-decoration:${S.ts.u ? 'underline' : ''} ${S.ts.s ? 'line-through' : ''};max-width:${Math.max(100, parseFloat(wrapper.style.width) - x - 20)}px;z-index:65;`;
   
   const confirmBtn = document.createElement('button');
   confirmBtn.innerHTML = '<i class="ph ph-check"></i>';
   confirmBtn.className = 'btn-3d accent inline-confirm-btn';
   confirmBtn.onmousedown = (e) => { e.preventDefault(); e.stopPropagation(); };
+  confirmBtn.ontouchstart = (e) => { e.preventDefault(); e.stopPropagation(); };
   confirmBtn.onclick = (e) => { e.stopPropagation(); commitIT(); };
   
   wrapper.appendChild(el); 
@@ -865,7 +870,7 @@ function stIT(pn, x, y, wrapper, initialText = '') {
     el.focus(); 
     const range = document.createRange(), sel = window.getSelection();
     range.selectNodeContents(el); range.collapse(false); sel.removeAllRanges(); sel.addRange(range);
-  }, 50);
+  }, 100);
   
   el.addEventListener('keydown', ev => { 
     if (ev.key === 'Escape') { ev.preventDefault(); cancelIT(); } 
@@ -875,6 +880,9 @@ function stIT(pn, x, y, wrapper, initialText = '') {
       commitIT(); 
     } 
   });
+  
+  // Prevenir que el scroll del padre interfiera con el editor
+  el.addEventListener('touchmove', e => { e.stopPropagation(); }, { passive: false });
 }
 function commitIT() {
   if (S.committing) return;
@@ -885,13 +893,15 @@ function commitIT() {
   if (S.ielBtn) S.ielBtn.remove();
   el.remove(); 
   S.iel = null; S.ielBtn = null;
-  if (t && S.pp) {
+  if (t && t !== 'Escribe...' && S.pp) {
     S.ann.push({ type: 'text', page: S.pp.page, x: S.pp.x, y: S.pp.y + parseFloat(S.ts.sz), txt: t, col: S.ts.col, sz: S.ts.sz, f: S.ts.f, op: 1, b: S.ts.b, i: S.ts.i, u: S.ts.u, s: S.ts.s });
     rPC(S.pp.page); markD();
     toast('Texto agregado', 'success');
+  } else if (S.pp) {
+    toast('Texto vacío descartado', '');
   }
   S.pp = null;
-  setTimeout(() => { S.committing = false; }, 100);
+  setTimeout(() => { S.committing = false; }, 150);
 }
 function cancelIT() { 
   if (S.committing) return;
@@ -901,7 +911,13 @@ function cancelIT() {
 }
 
 let spn = null, sx = 0, sy = 0;
-function opSg(pn, x, y) { spn = pn; sx = x; sy = y; openM('signModal'); initSC(); }
+function opSg(pn, x, y) { 
+  spn = pn; 
+  sx = x || 30; 
+  sy = y || 30; 
+  openM('signModal'); 
+  setTimeout(() => initSC(), 100);
+}
 function initSC() {
   const c = $('signCv'), ctx = c.getContext('2d'); 
   ctx.clearRect(0, 0, c.width, c.height); 
@@ -929,6 +945,24 @@ function initSC() {
   c.ontouchstart = s; c.ontouchmove = m; c.ontouchend = end;
 }
 $('clrSign').addEventListener('click', initSC);
+
+// Función para abrir firma directamente sin necesidad de clickear en la página
+function quickSign() {
+  if (!S.pdfDoc || !S.cp) { 
+    toast('Abre un PDF primero', 'error'); 
+    return; 
+  }
+  // Posición por defecto: parte superior derecha de la página actual
+  const wrapper = document.querySelector(`.page-card-view[data-page="${S.cp}"]`);
+  const defaultX = wrapper ? wrapper.offsetWidth - 150 : 300;
+  const defaultY = 30;
+  spn = S.cp;
+  sx = defaultX;
+  sy = defaultY;
+  openM('signModal');
+  setTimeout(() => initSC(), 100);
+}
+
 function applySign() {
   const c = $('signCv'), ctx = c.getContext('2d'), id = ctx.getImageData(0, 0, c.width, c.height);
   let mx = c.width, my = c.height, Mx = 0, My = 0, hc = false;
@@ -941,9 +975,13 @@ function applySign() {
   const p = 10; mx = Math.max(0, mx - p); my = Math.max(0, my - p); Mx = Math.min(c.width, Mx + p); My = Math.min(c.height, My + p);
   const cw = Mx - mx, ch = My - my, tc = document.createElement('canvas'); tc.width = cw; tc.height = ch;
   tc.getContext('2d').drawImage(c, mx, my, cw, ch, 0, 0, cw, ch);
-  svU(); const sc = Math.min(1, 140 / cw, 60 / ch);
+  svU(); 
+  // Ajustar escala para que sea más visible
+  const sc = Math.min(1.5, 180 / cw, 80 / ch);
   S.ann.push({ type: 'signature', page: spn, x: sx, y: sy, w: cw * sc, h: ch * sc, img: tc.toDataURL('image/png'), op: 1 });
-  closeM('signModal'); rPC(spn); markD(); toast('Firma insertada', 'success');
+  closeM('signModal'); rPC(spn); markD(); toast('Firma insertada en parte superior derecha', 'success');
+  // Resetear valores
+  spn = null; sx = 0; sy = 0;
 }
 
 function hdII(inp) {
@@ -1288,35 +1326,109 @@ function crIm(d) {
     const o = $('cropOverlay'), cv = $('cropCv'); o.classList.add('show');
     const im = new Image(); im.src = d;
     im.onload = () => {
-      const mw = window.innerWidth * 0.9, mh = window.innerHeight * 0.6;
+      const mw = window.innerWidth * 0.95, mh = window.innerHeight * 0.65;
       let w = im.width, h = im.height;
       if (w > mw) { h *= mw / w; w = mw; }
       if (h > mh) { w *= mh / h; h = mh; }
       cv.width = w; cv.height = h; const ctx = cv.getContext('2d'); ctx.drawImage(im, 0, 0, w, h);
-      let rect = { x: w * 0.1, y: h * 0.1, w: w * 0.8, h: h * 0.8 }, dr = false, rs = false, sx = 0, sy = 0;
+      
+      // Rectángulo de recorte con 4 puntos ajustables tipo CamScanner
+      let rect = { x: w * 0.1, y: h * 0.1, w: w * 0.8, h: h * 0.8 };
+      let points = {
+        nw: { x: rect.x, y: rect.y },
+        ne: { x: rect.x + rect.w, y: rect.y },
+        sw: { x: rect.x, y: rect.y + rect.h },
+        se: { x: rect.x + rect.w, y: rect.y + rect.h }
+      };
+      
+      let draggingPoint = null, dr = false, sx = 0, sy = 0;
+      const pointRadius = Math.max(12, w * 0.025);
+      
       const draw = () => {
-        ctx.clearRect(0, 0, w, h); ctx.drawImage(im, 0, 0, w, h);
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(0, 0, w, rect.y); ctx.fillRect(0, rect.y + rect.h, w, h - rect.y - rect.h);
-        ctx.fillRect(0, rect.y, rect.x, rect.h); ctx.fillRect(rect.x + rect.w, rect.y, w - rect.x - rect.w, rect.h);
-        ctx.strokeStyle = '#6c5ce7'; ctx.lineWidth = 2; ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+        ctx.clearRect(0, 0, w, h); 
+        ctx.drawImage(im, 0, 0, w, h);
+        
+        // Máscara oscura fuera del área de recorte
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.beginPath();
+        ctx.moveTo(0, 0); ctx.lineTo(w, 0); ctx.lineTo(w, points.ne.y); ctx.lineTo(points.se.x, points.se.y);
+        ctx.lineTo(points.sw.x, points.sw.y); ctx.lineTo(0, points.nw.y); ctx.closePath();
+        ctx.fill();
+        
+        // Dibujar polígono de recorte
+        ctx.beginPath();
+        ctx.moveTo(points.nw.x, points.nw.y);
+        ctx.lineTo(points.ne.x, points.ne.y);
+        ctx.lineTo(points.se.x, points.se.y);
+        ctx.lineTo(points.sw.x, points.sw.y);
+        ctx.closePath();
+        ctx.strokeStyle = '#10b981'; ctx.lineWidth = 3; ctx.stroke();
+        ctx.fillStyle = 'rgba(16,185,129,0.1)'; ctx.fill();
+        
+        // Dibujar puntos de control grandes y visibles
+        ctx.fillStyle = '#10b981';
+        ['nw', 'ne', 'sw', 'se'].forEach(key => {
+          const p = points[key];
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, pointRadius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
+        });
       };
+      
       draw();
-      const getPos = e => { const r = cv.getBoundingClientRect(); return { x: (e.touches ? e.touches[0].clientX : e.clientX) - r.left, y: (e.touches ? e.touches[0].clientY : e.clientY) - r.top }; };
-      const start = e => {
-        const { x, y } = getPos(e), m = 16;
-        if (x >= rect.x + rect.w - m && y >= rect.y + rect.h - m) rs = true;
-        else if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) { dr = true; sx = x - rect.x; sy = y - rect.y; }
+      
+      const getPos = e => { 
+        const r = cv.getBoundingClientRect(); 
+        return { 
+          x: (e.touches ? e.touches[0].clientX : e.clientX) - r.left, 
+          y: (e.touches ? e.touches[0].clientY : e.clientY) - r.top 
+        }; 
       };
+      
+      const hitTest = (pos, radius) => {
+        for (const key of ['nw', 'ne', 'sw', 'se']) {
+          const p = points[key];
+          const dist = Math.hypot(pos.x - p.x, pos.y - p.y);
+          if (dist < radius) return key;
+        }
+        return null;
+      };
+      
+      const start = e => {
+        e.preventDefault();
+        const pos = getPos(e);
+        draggingPoint = hitTest(pos, pointRadius * 2);
+      };
+      
       const move = e => {
-        if (!dr && !rs) return; e.preventDefault(); const { x, y } = getPos(e);
-        if (rs) { rect.w = Math.max(40, x - rect.x); rect.h = Math.max(20, y - rect.y); }
-        else { rect.x = Math.max(0, Math.min(w - 40, x - sx)); rect.y = Math.max(0, Math.min(h - 20, y - sy)); }
+        if (!draggingPoint) return; 
+        e.preventDefault(); 
+        const pos = getPos(e);
+        const margin = pointRadius * 2;
+        
+        // Limitar movimiento del punto
+        if (draggingPoint === 'nw') {
+          points.nw.x = Math.max(margin, Math.min(pos.x, points.ne.x - margin));
+          points.nw.y = Math.max(margin, Math.min(pos.y, points.sw.y - margin));
+        } else if (draggingPoint === 'ne') {
+          points.ne.x = Math.max(points.nw.x + margin, Math.min(pos.x, w - margin));
+          points.ne.y = Math.max(margin, Math.min(pos.y, points.se.y - margin));
+        } else if (draggingPoint === 'sw') {
+          points.sw.x = Math.max(margin, Math.min(pos.x, points.se.x - margin));
+          points.sw.y = Math.max(points.nw.y + margin, Math.min(pos.y, h - margin));
+        } else if (draggingPoint === 'se') {
+          points.se.x = Math.max(points.sw.x + margin, Math.min(pos.x, w - margin));
+          points.se.y = Math.max(points.ne.y + margin, Math.min(pos.y, h - margin));
+        }
         draw();
       };
-      const end = () => { dr = false; rs = false; };
-      cv.onmousedown = start; cv.onmousemove = move; cv.onmouseup = end;
-      cv.ontouchstart = e => { e.preventDefault(); start(e); }; cv.ontouchmove = move; cv.ontouchend = end;
+      
+      const end = () => { draggingPoint = null; };
+      
+      cv.onmousedown = start; cv.onmousemove = move; cv.onmouseup = end; cv.onmouseleave = end;
+      cv.ontouchstart = start; cv.ontouchmove = move; cv.ontouchend = end;
+      
       S.cr = url => { o.classList.remove('show'); r(url); S.cr = null; };
     };
   });
